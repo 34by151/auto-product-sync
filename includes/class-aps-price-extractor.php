@@ -406,16 +406,33 @@ class APS_Price_Extractor {
      */
     private function update_product_prices($product_id, $prices) {
         $add_gst = APS_Core::get_product_meta($product_id, '_aps_add_gst') === 'yes';
-        
+        $add_margin = APS_Core::get_product_meta($product_id, '_aps_add_margin') === 'yes';
+        $margin_percentage = floatval(APS_Core::get_product_meta($product_id, '_aps_margin_percentage'));
+
+        // Ensure margin percentage has a default value and minimum of 1%
+        if (empty($margin_percentage) || $margin_percentage < 1) {
+            $margin_percentage = 10; // Default 10%
+        }
+
         $old_regular = APS_Core::get_product_meta($product_id, '_aps_external_regular_price_inc_gst');
         $old_sale = APS_Core::get_product_meta($product_id, '_aps_external_sale_price_inc_gst');
-        
+
         APS_Core::update_product_meta($product_id, '_aps_external_regular_price', $prices['regular_price']);
         APS_Core::update_product_meta($product_id, '_aps_external_sale_price', $prices['sale_price']);
-        
+
+        // Step 1: Apply GST if enabled (base price * 1.1)
         $regular_price_inc_gst = $add_gst ? round($prices['regular_price'] * 1.1, 2) : $prices['regular_price'];
         $sale_price_inc_gst = $add_gst ? round($prices['sale_price'] * 1.1, 2) : $prices['sale_price'];
-        
+
+        // Step 2: Apply Margin if enabled (price after GST * (1 + margin/100))
+        if ($add_margin) {
+            $margin_multiplier = 1 + ($margin_percentage / 100);
+            $regular_price_inc_gst = round($regular_price_inc_gst * $margin_multiplier, 2);
+            if ($sale_price_inc_gst > 0) {
+                $sale_price_inc_gst = round($sale_price_inc_gst * $margin_multiplier, 2);
+            }
+        }
+
         APS_Core::update_product_meta($product_id, '_aps_external_regular_price_inc_gst', $regular_price_inc_gst);
         APS_Core::update_product_meta($product_id, '_aps_external_sale_price_inc_gst', $sale_price_inc_gst);
         
