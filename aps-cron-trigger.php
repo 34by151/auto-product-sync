@@ -5,7 +5,7 @@
  */
 
 // Hardcoded absolute paths based on your server structure
-$wp_config_path = '/var/www/vhosts/artinmetal.com.au/artinmetal.au/wp-config.php';
+$wp_config_path = '/var/www/vhosts/artinmetal.au/artinmetal.au/wp-config.php';
 
 echo "APS Cron Trigger\n";
 echo "================\n";
