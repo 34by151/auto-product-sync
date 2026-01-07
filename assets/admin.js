@@ -17,7 +17,9 @@ jQuery(document).ready(function($) {
         var button = $(this);
         var productId = button.data('product-id');
         var row = button.closest('tr');
-        var errorColumn = row.find('.product-error');
+        var statusColumn = row.find('.product-error');
+        var retryColumn = row.find('.product-retry');
+        var timestampColumn = row.find('.product-timestamp');
         
         console.log('APS: Syncing product ID:', productId);
         
@@ -30,8 +32,8 @@ jQuery(document).ready(function($) {
         var originalText = button.text();
         button.prop('disabled', true).text('Syncing...');
         
-        // Clear any existing error messages in the error column
-        errorColumn.html('—');
+        // Clear any existing error messages in the status column
+        statusColumn.html('—');
         
         $.ajax({
             url: aps_ajax.ajax_url,
@@ -48,8 +50,8 @@ jQuery(document).ready(function($) {
                 console.log('APS: AJAX response received:', response);
                 
                 if (response && response.success) {
-                    // Update error column with success status
-                    errorColumn.html('<div class="aps-last-status">Success: Prices updated</div>');
+                    // Update row with fresh data from server
+                    updateProductRow(productId, statusColumn, retryColumn, timestampColumn);
                     
                     // Show success in button temporarily
                     button.text('✓ Success');
@@ -58,8 +60,11 @@ jQuery(document).ready(function($) {
                     }, 2000);
                 } else {
                     var errorMsg = (response && response.data) ? response.data : 'Unknown error';
-                    // Show error in error column
-                    errorColumn.html('<div class="aps-last-status aps-error-status">Error: ' + errorMsg + '</div>');
+                    // Show error in status column
+                    statusColumn.html('<div class="aps-last-status aps-error-status">Error: ' + errorMsg + '</div>');
+                    
+                    // Update retry and timestamp columns
+                    updateProductRow(productId, statusColumn, retryColumn, timestampColumn);
                     
                     // Show error in button temporarily
                     button.text('✗ Failed');
@@ -71,8 +76,8 @@ jQuery(document).ready(function($) {
             error: function(xhr, status, error) {
                 console.error('APS: AJAX error:', xhr.responseText, status, error);
                 
-                // Show connection error in error column
-                errorColumn.html('<div class="aps-last-status aps-error-status">Error: Connection failed</div>');
+                // Show connection error in status column
+                statusColumn.html('<div class="aps-last-status aps-error-status">Error: Connection failed</div>');
                 
                 // Show error in button temporarily
                 button.text('✗ Connection Error');
@@ -87,6 +92,47 @@ jQuery(document).ready(function($) {
             }
         });
     });
+    
+    // Function to update a single product row with fresh data
+    function updateProductRow(productId, statusColumn, retryColumn, timestampColumn) {
+        $.ajax({
+            url: aps_ajax.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'aps_get_product_row_data',
+                product_id: productId,
+                security: aps_ajax.nonce
+            },
+            success: function(response) {
+                if (response && response.success && response.data) {
+                    var data = response.data;
+                    
+                    // Update status column
+                    var statusHtml = '';
+                    if (data.error_date) {
+                        statusHtml += '<div class="aps-error-date">' + data.error_date + '</div>';
+                    }
+                    if (data.last_status) {
+                        statusHtml += '<div class="aps-last-status">' + data.last_status + '</div>';
+                    }
+                    if (!statusHtml) {
+                        statusHtml = '—';
+                    }
+                    statusColumn.html(statusHtml);
+                    
+                    // Update retry column
+                    retryColumn.html('<span class="aps-retry-count">' + data.retry_count + '/3</span>');
+                    
+                    // Update timestamp column
+                    if (data.timestamp) {
+                        timestampColumn.html(data.timestamp);
+                    } else {
+                        timestampColumn.html('');
+                    }
+                }
+            }
+        });
+    }
     
     // Bulk sync
     $('#aps-sync-all').on('click', function(e) {
@@ -130,12 +176,12 @@ jQuery(document).ready(function($) {
                     console.log('APS: Bulk sync response:', response);
                     
                     if (response && response.success) {
-                        statusEl.addClass('aps-success').text('Starting bulk sync...');
+                        statusEl.addClass('aps-success').text('First batch processing...');
                         button.text('Syncing...');
-                        // Start polling for status updates immediately
+                        // Start polling for status updates after first batch completes
                         setTimeout(function() {
                             pollSyncStatus(originalText, button, statusEl, progressContainer, progressBar, progressText);
-                        }, 2000); // Give the background process 2 seconds to start
+                        }, 1000);
                     } else {
                         var errorMsg = (response && response.data) ? response.data : 'Unknown error';
                         statusEl.addClass('aps-error').text('✗ ' + errorMsg);
@@ -174,16 +220,57 @@ jQuery(document).ready(function($) {
         }
     });
     
-    // Poll sync status function
+    // Clear lock button
+    $('#aps-clear-lock').on('click', function(e) {
+        e.preventDefault();
+        
+        var button = $(this);
+        var originalText = button.text();
+        
+        if (confirm('This will clear all sync locks and stop any running syncs. Continue?')) {
+            button.prop('disabled', true).text('Clearing...');
+            
+            $.ajax({
+                url: aps_ajax.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'aps_clear_lock',
+                    security: aps_ajax.nonce
+                },
+                success: function(response) {
+                    if (response && response.success) {
+                        alert('Locks cleared successfully. You can now start a new sync.');
+                    } else {
+                        alert('Error: ' + (response.data || 'Unknown error'));
+                    }
+                },
+                error: function() {
+                    alert('Connection error');
+                },
+                complete: function() {
+                    button.prop('disabled', false).text(originalText);
+                }
+            });
+        }
+    });
+    
+    // Poll sync status function with batch triggering
     function pollSyncStatus(originalButtonText, button, statusEl, progressContainer, progressBar, progressText) {
         console.log('APS: Starting status polling');
         
         var pollCount = 0;
         var maxPolls = 600; // 30 minutes at 3-second intervals
+        var firstPoll = true;
         
         var pollInterval = setInterval(function() {
             pollCount++;
             console.log('APS: Status poll #' + pollCount);
+            
+            // On first poll, trigger the batch to start
+            if (firstPoll) {
+                firstPoll = false;
+                triggerNextBatch();
+            }
             
             $.ajax({
                 url: aps_ajax.ajax_url,
@@ -197,6 +284,12 @@ jQuery(document).ready(function($) {
                     
                     if (response && response.success && response.data) {
                         var status = response.data;
+                        
+                        // Check if we need to trigger the next batch
+                        if (status.needs_next_batch === true) {
+                            console.log('APS: Triggering next batch');
+                            triggerNextBatch();
+                        }
                         
                         if (status.running) {
                             var percentage = status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0;
@@ -218,12 +311,25 @@ jQuery(document).ready(function($) {
                             clearInterval(pollInterval);
                             statusEl.removeClass('aps-success aps-error');
                             
-                            if (status.failed && status.failed > 0) {
+                            // Check if aborted
+                            if (status.aborted) {
+                                statusEl.addClass('aps-error').text('Aborted by user - ' + status.completed + ' of ' + status.total + ' products synced');
+                                button.text(originalButtonText)
+                                     .removeClass('button-secondary aps-aborting')
+                                     .addClass('button-primary')
+                                     .css({'background-color': '', 'border-color': '', 'color': ''});
+                            } else if (status.failed && status.failed > 0) {
                                 statusEl.addClass('aps-error').text('✗ Completed with ' + status.failed + ' errors');
-                                button.text('✗ Completed with Errors');
+                                button.text('✗ Completed with Errors')
+                                     .removeClass('button-secondary aps-aborting')
+                                     .addClass('button-primary')
+                                     .css({'background-color': '', 'border-color': '', 'color': ''});
                             } else {
                                 statusEl.addClass('aps-success').text('✓ Complete');
-                                button.text('✓ Complete');
+                                button.text('✓ Complete')
+                                     .removeClass('button-secondary aps-aborting')
+                                     .addClass('button-primary')
+                                     .css({'background-color': '', 'border-color': '', 'color': ''});
                             }
                             
                             if (progressBar.length && progressText.length) {
@@ -235,14 +341,18 @@ jQuery(document).ready(function($) {
                             
                             console.log('APS: Bulk sync completed - ' + status.completed + ' successful, ' + (status.failed || 0) + ' failed');
                             
-                            // Hide progress after delay and refresh page
+                            // Update all table rows after bulk sync completes
+                            updateTableRows();
+                            
+                            // Hide progress after delay and reset button
                             setTimeout(function() {
                                 if (progressContainer.length) {
                                     progressContainer.fadeOut();
                                 }
-                                button.text(originalButtonText);
-                                statusEl.text('');
-                                location.reload();
+                                if (!status.aborted) {
+                                    button.text(originalButtonText);
+                                    statusEl.text('');
+                                }
                             }, 3000);
                         }
                     } else {
@@ -285,6 +395,28 @@ jQuery(document).ready(function($) {
         }, 3000);
     }
     
+    // Function to trigger the next batch
+    function triggerNextBatch() {
+        $.ajax({
+            url: aps_ajax.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'aps_trigger_next_batch',
+                security: aps_ajax.nonce
+            },
+            success: function(response) {
+                if (response && response.success) {
+                    console.log('APS: Next batch triggered successfully', response.data);
+                } else {
+                    console.warn('APS: Failed to trigger next batch', response);
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('APS: Error triggering next batch:', xhr.responseText, status, error);
+            }
+        });
+    }
+    
     // Product table sorting
     if ($('#aps-products-table').length) {
         $('.aps-sortable').on('click', function() {
@@ -317,7 +449,7 @@ jQuery(document).ready(function($) {
                         aText = aText === 'Yes' ? 1 : 0;
                         bText = bText === 'Yes' ? 1 : 0;
                         break;
-                    case 'error':
+                    case 'status':
                         aText = $(a).find('.product-error').text().trim();
                         bText = $(b).find('.product-error').text().trim();
                         break;
@@ -326,6 +458,13 @@ jQuery(document).ready(function($) {
                         bText = $(b).find('.aps-retry-count').text().trim();
                         aText = parseInt(aText.split('/')[0]) || 0;
                         bText = parseInt(bText.split('/')[0]) || 0;
+                        break;
+                    case 'timestamp':
+                        aText = $(a).find('.product-timestamp').text().trim();
+                        bText = $(b).find('.product-timestamp').text().trim();
+                        // Empty timestamps go to bottom
+                        if (!aText) aText = '0';
+                        if (!bText) bText = '0';
                         break;
                     default:
                         aText = $(a).find('td').eq($(this).index()).text().trim();
@@ -399,4 +538,60 @@ jQuery(document).ready(function($) {
             $('.aps-tooltip').remove();
         }
     );
+    
+    // Function to update all visible table rows
+    function updateTableRows() {
+        var productIds = [];
+        $('#aps-products-table tbody tr').each(function() {
+            var productId = $(this).data('product-id');
+            if (productId) {
+                productIds.push(productId);
+            }
+        });
+        
+        if (productIds.length === 0) {
+            return;
+        }
+        
+        $.ajax({
+            url: aps_ajax.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'aps_get_multiple_product_rows',
+                product_ids: productIds,
+                security: aps_ajax.nonce
+            },
+            success: function(response) {
+                if (response && response.success && response.data) {
+                    $.each(response.data, function(productId, data) {
+                        var row = $('#aps-products-table tbody tr[data-product-id="' + productId + '"]');
+                        if (row.length) {
+                            // Update status column
+                            var statusHtml = '';
+                            if (data.error_date) {
+                                statusHtml += '<div class="aps-error-date">' + data.error_date + '</div>';
+                            }
+                            if (data.last_status) {
+                                statusHtml += '<div class="aps-last-status">' + data.last_status + '</div>';
+                            }
+                            if (!statusHtml) {
+                                statusHtml = '—';
+                            }
+                            row.find('.product-error').html(statusHtml);
+                            
+                            // Update retry column
+                            row.find('.product-retry').html('<span class="aps-retry-count">' + data.retry_count + '/3</span>');
+                            
+                            // Update timestamp column
+                            if (data.timestamp) {
+                                row.find('.product-timestamp').html(data.timestamp);
+                            } else {
+                                row.find('.product-timestamp').html('');
+                            }
+                        }
+                    });
+                }
+            }
+        });
+    }
 });

@@ -168,21 +168,6 @@
     font-size: 11px;
     margin-top: 2px;
     font-style: italic;
-};
-}
-
-#aps-products-table th.sortable:hover .sort-indicator {
-    opacity: 1;
-}
-
-#aps-products-table td {
-    padding: 12px 8px;
-    border-bottom: 1px solid #f0f0f1;
-    vertical-align: middle;
-}
-
-#aps-products-table tr:hover {
-    background: #f6f7f7;
 }
 
 /* Log status styles */
@@ -467,14 +452,6 @@
 .aps-retry-count:before {
     content: "Retry: ";
     font-weight: normal;
-    color: #646970;
-}
-.aps-settings-section .form-table {
-    margin-top: 0;
-}
-
-.aps-settings-section .description {
-    font-style: italic;
     color: #646970;
 }
 
