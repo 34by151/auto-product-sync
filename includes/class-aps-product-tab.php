@@ -36,6 +36,11 @@ class APS_Product_Tab {
         $enable_sync = APS_Core::get_product_meta($post->ID, '_aps_enable_sync');
         $url = APS_Core::get_product_meta($post->ID, '_aps_url');
         $add_gst = APS_Core::get_product_meta($post->ID, '_aps_add_gst');
+        $add_margin = APS_Core::get_product_meta($post->ID, '_aps_add_margin');
+        $margin_percentage = APS_Core::get_product_meta($post->ID, '_aps_margin_percentage');
+        if (empty($margin_percentage)) {
+            $margin_percentage = 10; // Default 10%
+        }
         $external_regular_price = APS_Core::get_product_meta($post->ID, '_aps_external_regular_price');
         $external_sale_price = APS_Core::get_product_meta($post->ID, '_aps_external_sale_price');
         $external_regular_price_inc_gst = APS_Core::get_product_meta($post->ID, '_aps_external_regular_price_inc_gst');
@@ -69,6 +74,28 @@ class APS_Product_Tab {
                     'label' => __('Add GST', 'auto-product-sync'),
                     'description' => __('Add 10% GST to extracted prices', 'auto-product-sync'),
                     'value' => $add_gst === 'yes' ? 'yes' : 'no'
+                ));
+
+                // Add Margin checkbox
+                woocommerce_wp_checkbox(array(
+                    'id' => '_aps_add_margin',
+                    'label' => __('Add Margin', 'auto-product-sync'),
+                    'description' => __('Add margin percentage to extracted prices (after GST if enabled)', 'auto-product-sync'),
+                    'value' => $add_margin === 'yes' ? 'yes' : 'no'
+                ));
+
+                // Margin Percentage field
+                woocommerce_wp_text_input(array(
+                    'id' => '_aps_margin_percentage',
+                    'label' => __('Margin Percentage', 'auto-product-sync'),
+                    'description' => __('Margin percentage to add (minimum 1%)', 'auto-product-sync'),
+                    'type' => 'number',
+                    'value' => $margin_percentage,
+                    'custom_attributes' => array(
+                        'min' => '1',
+                        'step' => '0.01'
+                    ),
+                    'desc_tip' => true
                 ));
                 ?>
             </div>
@@ -187,7 +214,19 @@ class APS_Product_Tab {
         // Add GST
         $add_gst = isset($_POST['_aps_add_gst']) ? 'yes' : 'no';
         APS_Core::update_product_meta($post_id, '_aps_add_gst', $add_gst);
-        
+
+        // Add Margin
+        $add_margin = isset($_POST['_aps_add_margin']) ? 'yes' : 'no';
+        APS_Core::update_product_meta($post_id, '_aps_add_margin', $add_margin);
+
+        // Margin Percentage
+        if (isset($_POST['_aps_margin_percentage'])) {
+            $margin_percentage = floatval($_POST['_aps_margin_percentage']);
+            // Ensure minimum value of 1%
+            $margin_percentage = max(1, $margin_percentage);
+            APS_Core::update_product_meta($post_id, '_aps_margin_percentage', $margin_percentage);
+        }
+
         // Note: External prices are read-only and updated by the sync process
     }
 }
