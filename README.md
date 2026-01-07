@@ -1,11 +1,11 @@
 # Auto Product Sync
 
-**Version:** 1.2.0  
-**Author:** ArtInMetal  
-**License:** GPL v2 or later  
-**Requires WordPress:** 5.0+  
-**Requires WooCommerce:** 6.0+  
-**Requires PHP:** 7.4+  
+**Version:** 1.3.0
+**Author:** ArtInMetal
+**License:** GPL v2 or later
+**Requires WordPress:** 5.0+
+**Requires WooCommerce:** 6.0+
+**Requires PHP:** 7.4+
 **Tested up to:** WordPress 6.8.2, WooCommerce 8.5
 
 Automatically sync product prices from external URLs for WooCommerce products using server cron jobs.
@@ -23,6 +23,7 @@ Auto Product Sync is a WooCommerce plugin that automatically extracts and update
 - **Batch Processing** - Processes products in configurable batches to prevent server timeouts
 - **Smart Filtering** - Skip recently synced products to reduce unnecessary API calls
 - **GST Calculation** - Optionally add 10% GST to extracted prices
+- **Margin Calculation** - Add customizable profit margins per product (applies after GST)
 - **Retry Logic** - Automatically retries failed syncs with exponential backoff
 - **Detailed Logging** - Track all sync activity and errors
 - **HPOS Compatible** - Fully compatible with WooCommerce High-Performance Order Storage
@@ -97,8 +98,18 @@ For each product you want to sync:
 2. Go to the **Auto Product Sync** tab
 3. Check **Enable Sync**
 4. Enter the **URL** where prices should be extracted from
-5. Optionally check **Add GST** to add 10% to extracted prices
-6. Click **Update** or **Publish**
+5. Optionally check **Add GST** to add 10% GST to extracted prices
+6. Optionally check **Add Margin** and set your desired margin percentage (default: 10%, minimum: 1%)
+7. Click **Update** or **Publish**
+
+**Price Calculation Order:**
+- Base price extracted from URL
+- GST applied first (if enabled): `price × 1.10`
+- Margin applied second (if enabled): `price × (1 + margin%/100)`
+
+**Example:** If base price is $100, GST is enabled, and margin is set to 15%:
+- After GST: $100 × 1.10 = $110
+- After Margin: $110 × 1.15 = $126.50
 
 ---
 
@@ -236,10 +247,12 @@ If you see "Sync already running" repeatedly:
 - `_aps_enable_sync` - Enable/disable sync per product
 - `_aps_url` - URL to extract prices from
 - `_aps_add_gst` - Add 10% GST toggle
-- `_aps_external_regular_price` - Extracted regular price
-- `_aps_external_sale_price` - Extracted sale price
-- `_aps_external_regular_price_inc_gst` - Regular price with GST
-- `_aps_external_sale_price_inc_gst` - Sale price with GST
+- `_aps_add_margin` - Add margin toggle
+- `_aps_margin_percentage` - Margin percentage value (default: 10%, minimum: 1%)
+- `_aps_external_regular_price` - Extracted regular price (base price from URL)
+- `_aps_external_sale_price` - Extracted sale price (base price from URL)
+- `_aps_external_regular_price_inc_gst` - Regular price with GST and margin applied
+- `_aps_external_sale_price_inc_gst` - Sale price with GST and margin applied
 - `_aps_last_sync_timestamp` - Unix timestamp of last sync
 - `_aps_last_status` - Last sync status message
 - `_aps_error_date` - Date of last error
@@ -289,7 +302,14 @@ The cron endpoint (`?aps_cron=1`) is protected by:
 
 ## Changelog
 
-### Version 1.2.0 (Current)
+### Version 1.3.0 (Current)
+- Added per-product margin feature with customizable percentages
+- Margin applies after GST calculation for accurate pricing
+- Margin field supports decimal values (e.g., 12.5%)
+- Minimum margin value enforced at 1%
+- Updated price calculation to apply: Base → GST → Margin
+
+### Version 1.2.0
 - Added server cron support with 5-minute intervals
 - Added "Skip Recently Synced Products" feature
 - Removed WordPress cron dependency

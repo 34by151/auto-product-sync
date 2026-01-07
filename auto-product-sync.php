@@ -3,7 +3,7 @@
  * Plugin Name: Auto Product Sync
  * Plugin URI: https://yoursite.com/auto-product-sync
  * Description: Automatically sync product prices from external URLs for WooCommerce products
- * Version: 1.2.0
+ * Version: 1.3.0
  * Author: ArtInMetal
  * License: GPL v2 or later
  * Text Domain: auto-product-sync
@@ -34,7 +34,7 @@ add_action('before_woocommerce_init', function() {
 // Define plugin constants
 define('APS_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('APS_PLUGIN_PATH', plugin_dir_path(__FILE__));
-define('APS_VERSION', '1.2.0');
+define('APS_VERSION', '1.3.0');
 
 // Include required files
 require_once APS_PLUGIN_PATH . 'includes/class-aps-core.php';
